@@ -56,7 +56,7 @@ for path in files:
 				ptr["children"][folder] = {"files": 0, "size": 0, "children": {}, "crawled":0, "no_crawled": 0}
 			ptr = ptr["children"][folder]
 
-out = {"name": "root", "children": []}
+out = {"name": "share", "children": []}
 def walk(folder, info, childs, out):
 	cover = int(info.get("crawled",0)/(info.get("crawled",0) or 1))
 	out.append({"name": folder, "size": info.get("size") or 0, "cover": int(cover*100), "color":"#{c}{c}{c}".format(c="%02x"%(cover*128)), "children": []})

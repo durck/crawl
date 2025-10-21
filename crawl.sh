@@ -357,12 +357,12 @@ EE
 			;;
 		application/octet-stream)
 			echo -n "raw," >> "$index"
-			temp=$(tempfile 2>/dev/null)
-			rm "$temp" && mkdir -p "$temp/$path"
-			binwalk -e "$path" -C "$temp/$path" | tail -n +4 | escape >> "$index"
+			#temp=$(tempfile 2>/dev/null)
+			#rm "$temp" && mkdir -p "$temp/$path"
+			#binwalk -e "$path" -C "$temp/$path" | tail -n +4 | escape >> "$index"
 			echo $GREEN " [raw]" $RESET
-			fork "$temp"
-			rm -r "$temp"
+			#fork "$temp"
+			#rm -r "$temp"
 			;;
 		*)
 			file "$path" | grep text > /dev/null &&

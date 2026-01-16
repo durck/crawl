@@ -46,45 +46,64 @@ def init(index):
   SETTINGS = {
     "mappings": {
       "properties": {
-        "timestamp": { "type": "text" },
-        "inurl": { "type" : "text" },
-        "site": { "type" : "text" },
-        "ext": { "type" : "text" },
-        "intitle": { "type" : "text" },
-        "intext": { "type" : "text" },
-        "filetype": { "type" : "text" }
+        "timestamp": { "type": "date", "format": "yyyy-MM-dd HH:mm:ss||epoch_second" },
+        "inurl": { "type": "text", "analyzer": "path_analyzer", "fields": {"keyword": {"type": "keyword"}} },
+        "relpath": { "type": "keyword" },
+        "server": { "type": "keyword" },
+        "share": { "type": "keyword" },
+        "site": { "type": "keyword" },
+        "ext": { "type": "keyword" },
+        "intitle": { "type": "text", "analyzer": "multilang" },
+        "intext": { "type": "text", "analyzer": "multilang" },
+        "filetype": { "type": "keyword" }
       }
     },
     "settings": {
+      "index": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0
+      },
       "analysis": {
         "analyzer": {
           "default": {
             "type": "custom",
             "tokenizer": "standard",
-            "filter": ["lowercase", "russian_stop", "russian_keywords", "russian_stemmer"],
+            "filter": ["lowercase", "multilang_stop", "multilang_stemmer"]
+          },
+          "multilang": {
+            "type": "custom",
+            "tokenizer": "standard",
+            "filter": ["lowercase", "multilang_stop", "multilang_stemmer"]
+          },
+          "path_analyzer": {
+            "type": "custom",
+            "tokenizer": "path_tokenizer",
+            "filter": ["lowercase"]
           },
           "autocomplete": {
             "type": "custom",
             "tokenizer": "standard",
-            "filter": ["lowercase", "russian_stop", "russian_keywords", "russian_stemmer", "autocomplete_filter"]
+            "filter": ["lowercase", "autocomplete_filter"]
+          }
+        },
+        "tokenizer": {
+          "path_tokenizer": {
+            "type": "path_hierarchy",
+            "delimiter": "/"
           }
         },
         "filter": {
-          "russian_stop": {
+          "multilang_stop": {
             "type": "stop",
             "stopwords": "_russian_"
           },
-          "russian_keywords": {
-            "type": "keyword_marker",
-            "keywords": []
-          },
-          "russian_stemmer": {
+          "multilang_stemmer": {
             "type": "stemmer",
             "language": "russian"
           },
           "autocomplete_filter": {
             "type": "edge_ngram",
-            "min_gram": 1,
+            "min_gram": 2,
             "max_gram": 20
           }
         }
@@ -98,29 +117,63 @@ def init(index):
 def add(index, source):
   csv.field_size_limit(2**32)
   reader = csv.reader(open(source, errors="surrogateescape"), delimiter=',', quotechar='"')
+
+  BATCH_SIZE = 500
+  batch = []
+  total = 0
+  errors = 0
+  site = path.splitext(path.basename(source))[0]
+
   for row in reader:
     try:
-      timestamp,filepath,ext,filetype,content,*_ = row
+      # New format: timestamp,fullpath,relpath,server,share,ext,type,content
+      # Old format: timestamp,filepath,ext,filetype,content
+      if len(row) >= 8:
+        timestamp, fullpath, relpath, server, share, ext, filetype, content, *_ = row
+      else:
+        # Fallback for old CSV format
+        timestamp, fullpath, ext, filetype, content, *_ = row
+        relpath, server, share = fullpath, "", ""
 
-      document = {
+      doc_id = md5(fullpath.encode()).hexdigest()
+
+      # Bulk format: action + document
+      batch.append({"index": {"_index": index, "_id": doc_id}})
+      batch.append({
         "timestamp": datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S'),
-        "inurl": filepath,
-        "site": path.splitext(path.basename(source))[0],
+        "inurl": fullpath,
+        "relpath": relpath,
+        "server": server,
+        "share": share,
+        "site": site,
         "ext": ext,
         "intitle": "",
         "intext": content,
         "filetype": filetype
-      }
+      })
 
-      response = client.index(
-          index = index,
-          id = md5(filepath.encode()).hexdigest(),
-          body = document,
-          refresh = True
-      )
-      print(response)
+      if len(batch) >= BATCH_SIZE * 2:  # *2 because action+doc pairs
+        response = client.bulk(body=batch, refresh=False)
+        if response.get('errors'):
+          errors += sum(1 for item in response['items'] if item['index'].get('error'))
+        total += len(batch) // 2
+        print(f"\r[*] Imported {total} documents, {errors} errors", end='', flush=True)
+        batch = []
+
     except Exception as e:
-      print(str(e))
+      errors += 1
+      print(f"\n[!] {str(e)}")
+
+  # Flush remaining
+  if batch:
+    response = client.bulk(body=batch, refresh=False)
+    if response.get('errors'):
+      errors += sum(1 for item in response['items'] if item['index'].get('error'))
+    total += len(batch) // 2
+
+  # Final refresh
+  client.indices.refresh(index=index)
+  print(f"\n[+] Done: {total} documents, {errors} errors")
 
 def query(index, text):
   query = {
@@ -153,29 +206,59 @@ def query(index, text):
       body = query
   )
   for result in response['hits']['hits']:
-      print("{G}{uri} {B}{cache}{R}".format(
-        uri=result['highlight']['inurl'][0] if result['highlight'].get('inurl') else result['_source']['inurl'],
-        cache=result['_id'],
-        G=Fore.GREEN, B=Fore.LIGHTBLACK_EX, R=Fore.RESET))
+      src = result['_source']
+      uri = result['highlight']['inurl'][0] if result['highlight'].get('inurl') else src['inurl']
+      server = src.get('server', '')
+      share = src.get('share', '')
+      location = f"[{server}/{share}]" if server else ""
+      print(f"{Fore.GREEN}{uri} {Fore.CYAN}{location} {Fore.LIGHTBLACK_EX}{result['_id']}{Fore.RESET}")
       print(" ... ".join(result['highlight'].get('intext',[])))
 
 def cache(index, _id):
-  result = client.get(index='test',id=_id)
+  result = client.get(index=index, id=_id)
   print(result["_source"]["intext"])
 
 def delete(index, source):
   csv.field_size_limit(2**32)
   reader = csv.reader(open(source, errors="surrogateescape"), delimiter=',', quotechar='"')
+
+  BATCH_SIZE = 500
+  batch = []
+  total = 0
+  errors = 0
+
   for row in reader:
     try:
-      timestamp,filepath,ext,filetype,content,*_ = row
-      response = client.delete(
-        index = index,
-        id = md5(filepath.encode()).hexdigest(),
-      )
-      print(response)
+      # Support both new and old CSV formats
+      if len(row) >= 8:
+        timestamp, fullpath, relpath, server, share, ext, filetype, content, *_ = row
+      else:
+        timestamp, fullpath, ext, filetype, content, *_ = row
+      doc_id = md5(fullpath.encode()).hexdigest()
+
+      batch.append({"delete": {"_index": index, "_id": doc_id}})
+
+      if len(batch) >= BATCH_SIZE:
+        response = client.bulk(body=batch, refresh=False)
+        if response.get('errors'):
+          errors += sum(1 for item in response['items'] if item['delete'].get('error'))
+        total += len(batch)
+        print(f"\r[*] Deleted {total} documents, {errors} errors", end='', flush=True)
+        batch = []
+
     except Exception as e:
-      print(str(e))
+      errors += 1
+      print(f"\n[!] {str(e)}")
+
+  # Flush remaining
+  if batch:
+    response = client.bulk(body=batch, refresh=False)
+    if response.get('errors'):
+      errors += sum(1 for item in response['items'] if item['delete'].get('error'))
+    total += len(batch)
+
+  client.indices.refresh(index=index)
+  print(f"\n[+] Done: {total} documents deleted, {errors} errors")
 
 def drop(index):
   response = client.indices.delete(

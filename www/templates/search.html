@@ -81,6 +81,7 @@
               <span class="text-muted">(<%= page.relevant %>)</span>
             </h4>
             <span class="text-success pointer" onclick="new_tab('<%=page.cache%>')"><%- page.url %></span>
+            <% if(page.server) { %><span class="label label-info"><%= page.server %><% if(page.share) { %>/<%= page.share %><% } %></span><% } %>
             <span class="text-muted"><%= new Date(page.timestamp).toLocaleDateString() %></span>
             <p><%- page.matches %></p>
           </div>

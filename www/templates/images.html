@@ -81,6 +81,7 @@
       <img src="/images/<%=page.url.replace(/<\/?b>/g,'').replace(/\//g,'-')%>" class="figure-img img-thumbnail rounded" alt="<%=page.title%>">
       <figcaption class="figure-caption"><a target="_blank" href="<%=page.href%>"><%- page.title %></a></figcaption>
       <figcaption class="figure-caption"><span class="text-success pointer" onclick="new_tab('<%=page.cache%>')"><%- page.url %></span></figcaption>
+      <% if(page.server) { %><figcaption class="figure-caption"><span class="label label-info"><%= page.server %><% if(page.share) { %>/<%= page.share %><% } %></span></figcaption><% } %>
       <figcaption class="figure-caption"><%- page.matches.slice(0,200) %></figcaption>
     </figure>
     </div>

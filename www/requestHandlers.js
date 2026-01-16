@@ -127,7 +127,12 @@ function search(response, request)
             var title = res.body.hits.hits[i]._source.inurl.split('/').slice(-1)[0] //res.body.hits.hits[i]._source.intitle
             var url = res.body.hits.hits[i]._source.inurl
             var filetype = res.body.hits.hits[i]._source.filetype
-            var href = url.split('/')[0] + '://' + url.split('/').slice(1).join('/')
+            var server = res.body.hits.hits[i]._source.server || ''
+            var share = res.body.hits.hits[i]._source.share || ''
+            // Support both old format (smb/server/share/path) and new format (file://server/share/path)
+            var href = url.startsWith('file://') || url.startsWith('http://') || url.startsWith('https://') || url.startsWith('ftp://')
+                ? url
+                : url.split('/')[0] + '://' + url.split('/').slice(1).join('/')
             var matches = []
             for( item in res.body.hits.hits[i].highlight )
             {
@@ -146,6 +151,8 @@ function search(response, request)
                 filetype: filetype,
                 relevant: relevant,
                 timestamp: timestamp,
+                server: server,
+                share: share,
                 matches: matches.join(" ... ").replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/_b_/g, '<b>').replace(/_\/b_/g, '</b>')
             } )
         }

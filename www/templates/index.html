@@ -1,43 +1,366 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-  <link href="/bootstrap/dist/css/bootstrap.css" rel="stylesheet">
-  <link href="/jquery-ui/themes/base/jquery-ui.css" rel="stylesheet">
-  <script src="/jquery/dist/jquery.min.js"></script>
-  <script src="/jquery-ui/jquery-ui.min.js"></script>
-  <script>
-  $(document).ready( function() {
-    $("#query").autocomplete( {
-      source: function(request, response) {
-        $.ajax( {
-          url: "auto",
-          data: {q: request.term},
-          success: function(data) { response(data) }
-        } )
-      },
-      minLength: 2
-    } ) 
-  } )
-  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crawl - Document Search</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .hero {
+      min-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+    }
+    .hero-logo {
+      font-size: 3.5rem;
+      font-weight: 800;
+      color: var(--primary);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .hero-logo svg {
+      width: 56px;
+      height: 56px;
+    }
+    .hero-subtitle {
+      font-size: 1.125rem;
+      color: var(--secondary);
+      margin-bottom: 2.5rem;
+    }
+    .hero .search-box {
+      width: 100%;
+      max-width: 640px;
+    }
+    .search-tips {
+      margin-top: 2rem;
+      font-size: 0.875rem;
+      color: var(--secondary);
+    }
+    .search-tips code {
+      background: var(--primary-light);
+      color: var(--primary);
+      padding: 0.125rem 0.5rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+    }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+      max-width: 900px;
+      margin: 3rem auto 0;
+    }
+    .feature {
+      text-align: left;
+      padding: 1.25rem;
+      border-radius: var(--radius);
+      background: white;
+      border: 1px solid var(--border);
+    }
+    @media (prefers-color-scheme: dark) {
+      .feature { background: var(--light); }
+    }
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--primary-light);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.75rem;
+      color: var(--primary);
+    }
+    .feature h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0 0 0.375rem;
+    }
+    .feature p {
+      font-size: 0.875rem;
+      color: var(--secondary);
+      margin: 0;
+    }
+  </style>
 </head>
 <body>
 
-<div class="container-fluid">
-  <div class="row row-eq-height" style="margin-top:15%">
-    <form name="form" method="GET" action="search">
-     <div class="col-md-8 col-md-offset-2">
-      <div class="input-group">
-        <input id="query" type="text" name="q" class="form-control" value="">
-        <span class="input-group-btn">
-         <button class="btn btn-primary" type="button" onclick="document.form.submit()">искать</button>
-        </span>
-       </div>
-     </div>
+<main class="hero">
+  <div class="hero-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/>
+      <path d="M21 21l-4.35-4.35"/>
+    </svg>
+    Crawl
+  </div>
+  <p class="hero-subtitle">Full-text search across documents, emails, and network shares</p>
+
+  <div class="search-box">
+    <form id="searchForm" method="GET" action="search">
+      <div class="search-form">
+        <div class="search-input-wrapper">
+          <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input
+            type="text"
+            id="query"
+            name="q"
+            class="search-input"
+            placeholder="Search documents, emails, files..."
+            autocomplete="off"
+            autofocus
+          >
+        </div>
+        <button type="submit" class="search-btn">Search</button>
+      </div>
+
+      <div class="tabs">
+        <button type="button" class="tab active" onclick="setSearchMode('all')">All</button>
+        <button type="button" class="tab" onclick="setSearchMode('images')">Images</button>
+        <input type="hidden" name="images" id="imagesMode" value="0">
+      </div>
     </form>
   </div>
-</div>
+
+  <div class="search-tips">
+    Tips: <code>filetype:pdf</code> <code>intitle:report</code> <code>server:fileserver</code> <code>"exact phrase"</code>
+  </div>
+
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </div>
+      <h3>40+ File Formats</h3>
+      <p>PDF, Office, archives, emails, images with OCR, audio transcription</p>
+    </div>
+
+    <div class="feature">
+      <div class="feature-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+          <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+          <line x1="6" y1="6" x2="6.01" y2="6"/>
+          <line x1="6" y1="18" x2="6.01" y2="18"/>
+        </svg>
+      </div>
+      <h3>Network Shares</h3>
+      <p>SMB, NFS, FTP, HTTP/HTTPS, RSYNC crawling with deduplication</p>
+    </div>
+
+    <div class="feature">
+      <div class="feature-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+          <polyline points="22,6 12,13 2,6"/>
+        </svg>
+      </div>
+      <h3>Email Search</h3>
+      <p>IMAP mailbox crawling with attachment extraction</p>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    Crawl v2.0 &mdash; Press <kbd class="kbd">/</kbd> to focus search
+  </div>
+</footer>
+
+<script>
+// Search mode toggle
+function setSearchMode(mode) {
+  const tabs = document.querySelectorAll('.tab');
+  tabs.forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('imagesMode').value = mode === 'images' ? '1' : '0';
+}
+
+// Search History
+const HISTORY_KEY = 'crawl_search_history';
+const MAX_HISTORY = 20;
+
+function getSearchHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function addToHistory(query) {
+  if (!query || query.trim().length < 2) return;
+  const history = getSearchHistory();
+  const existing = history.findIndex(h => h.query === query);
+  if (existing >= 0) history.splice(existing, 1);
+  history.unshift({ query: query, timestamp: Date.now() });
+  if (history.length > MAX_HISTORY) history.pop();
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch {}
+}
+
+function clearHistory() {
+  localStorage.removeItem(HISTORY_KEY);
+  hideHistory();
+}
+
+function showHistory() {
+  const history = getSearchHistory();
+  if (!history.length) return;
+
+  let dropdown = document.getElementById('historyDropdown');
+  if (!dropdown) {
+    dropdown = document.createElement('div');
+    dropdown.id = 'historyDropdown';
+    dropdown.className = 'search-history';
+    document.querySelector('.search-input-wrapper').appendChild(dropdown);
+  }
+
+  const items = history.slice(0, 10).map(h => {
+    const date = new Date(h.timestamp);
+    const timeStr = date.toLocaleDateString('ru-RU');
+    return `<div class="search-history-item" data-query="${escapeAttr(h.query)}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <span>${escapeHtml(h.query)}</span>
+      <time>${timeStr}</time>
+    </div>`;
+  }).join('');
+
+  dropdown.innerHTML = `
+    <div class="search-history-header">
+      Recent searches
+      <span class="search-history-clear" onclick="clearHistory()">Clear all</span>
+    </div>
+    ${items}
+  `;
+  dropdown.classList.add('visible');
+
+  dropdown.querySelectorAll('.search-history-item').forEach(el => {
+    el.addEventListener('click', function() {
+      document.getElementById('query').value = this.dataset.query;
+      hideHistory();
+      document.getElementById('searchForm').submit();
+    });
+  });
+}
+
+function hideHistory() {
+  const dropdown = document.getElementById('historyDropdown');
+  if (dropdown) dropdown.classList.remove('visible');
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function escapeAttr(text) {
+  return text.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Autocomplete and History integration
+document.addEventListener('DOMContentLoaded', function() {
+  const input = document.getElementById('query');
+  const form = document.getElementById('searchForm');
+  let timeout = null;
+  let acDropdown = null;
+
+  function createAcDropdown() {
+    if (acDropdown) return acDropdown;
+    acDropdown = document.createElement('div');
+    acDropdown.className = 'ui-autocomplete';
+    acDropdown.style.cssText = 'position:absolute;width:100%;display:none;';
+    input.parentNode.appendChild(acDropdown);
+    return acDropdown;
+  }
+
+  function showSuggestions(items) {
+    hideHistory();
+    const dd = createAcDropdown();
+    if (!items.length) {
+      dd.style.display = 'none';
+      return;
+    }
+    dd.innerHTML = items.map(item =>
+      `<div class="ui-menu-item">${escapeHtml(item)}</div>`
+    ).join('');
+    dd.style.display = 'block';
+
+    dd.querySelectorAll('.ui-menu-item').forEach(el => {
+      el.addEventListener('click', function() {
+        input.value = this.textContent;
+        dd.style.display = 'none';
+        form.submit();
+      });
+    });
+  }
+
+  input.addEventListener('input', function() {
+    clearTimeout(timeout);
+    hideHistory();
+    const q = this.value.trim();
+    if (q.length < 2) {
+      if (acDropdown) acDropdown.style.display = 'none';
+      return;
+    }
+    timeout = setTimeout(() => {
+      fetch('auto?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(showSuggestions)
+        .catch(() => {});
+    }, 200);
+  });
+
+  // Show history on focus if empty
+  input.addEventListener('focus', function() {
+    if (!this.value.trim() && acDropdown?.style.display !== 'block') {
+      showHistory();
+    }
+  });
+
+  // Save to history on submit
+  form.addEventListener('submit', function() {
+    addToHistory(input.value.trim());
+  });
+
+  // Hide on click outside
+  document.addEventListener('click', function(e) {
+    const wrapper = document.querySelector('.search-input-wrapper');
+    if (!wrapper.contains(e.target)) {
+      if (acDropdown) acDropdown.style.display = 'none';
+      hideHistory();
+    }
+  });
+
+  // Keyboard shortcut to focus search
+  document.addEventListener('keydown', function(e) {
+    if (e.key === '/' && document.activeElement !== input) {
+      e.preventDefault();
+      input.focus();
+    }
+    if (e.key === 'Escape') {
+      if (acDropdown) acDropdown.style.display = 'none';
+      hideHistory();
+    }
+  });
+});
+</script>
 
 </body>
 </html>

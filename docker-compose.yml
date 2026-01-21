@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # OpenSearch - Full-text search engine
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: crawl-opensearch
+    environment:
+      - cluster.name=crawl-cluster
+      - node.name=crawl-node
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASS:-Crawl@2024!}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    networks:
+      - crawl-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -k https://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # OpenSearch Dashboards (optional)
+  dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.0
+    container_name: crawl-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["https://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=false
+    ports:
+      - "5601:5601"
+    networks:
+      - crawl-net
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    profiles:
+      - dashboards
+
+  # Crawl Web UI
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crawl-web
+    environment:
+      - OPENSEARCH_HOST=opensearch
+      - OPENSEARCH_PORT=9200
+      - OPENSEARCH_USER=admin
+      - OPENSEARCH_PASS=${OPENSEARCH_PASS:-Crawl@2024!}
+      - OPENSEARCH_USE_SSL=true
+      - OPENSEARCH_VERIFY_CERTS=false
+      - PORT=8080
+    ports:
+      - "8080:8080"
+    networks:
+      - crawl-net
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    command: ["node", "/opt/crawl/www/index.js"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Crawl Worker (for scheduled crawling)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crawl-worker
+    environment:
+      - OPENSEARCH_HOST=opensearch
+      - OPENSEARCH_PORT=9200
+      - OPENSEARCH_USER=admin
+      - OPENSEARCH_PASS=${OPENSEARCH_PASS:-Crawl@2024!}
+      - OPENSEARCH_USE_SSL=true
+      - OCR_DISABLED=${OCR_DISABLED:-0}
+      - OCR_LANGS=${OCR_LANGS:-eng rus}
+      - DEFAULT_THREADS=${CRAWL_THREADS:-4}
+    volumes:
+      - ./data:/data
+      - ./output:/opt/crawl/output
+      - crawl-session:/opt/crawl/sessions
+    networks:
+      - crawl-net
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    profiles:
+      - worker
+    command: ["bash"]
+    stdin_open: true
+    tty: true
+
+volumes:
+  opensearch-data:
+    driver: local
+  crawl-session:
+    driver: local
+
+networks:
+  crawl-net:
+    driver: bridge

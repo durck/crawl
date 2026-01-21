@@ -1,11 +1,22 @@
-var server = require("./server")
-var router = require("./router")
-var requestHandlers = require("./requestHandlers")
+/**
+ * Crawl Web Application Entry Point
+ */
 
-var handle = {}
-handle[""] = requestHandlers.start
-handle["search"] = requestHandlers.search
-handle["auto"] = requestHandlers.autocomplete
-handle["cache"] = requestHandlers.cache
+const server = require("./server");
+const router = require("./router");
+const requestHandlers = require("./requestHandlers");
 
-server.start( router.route, handle )
+// Route handlers
+const handle = {
+    "": requestHandlers.start,
+    "search": requestHandlers.search,
+    "auto": requestHandlers.autocomplete,
+    "cache": requestHandlers.cache,
+    "stats": requestHandlers.stats,
+    "api/stats": requestHandlers.apiStats
+};
+
+// Start server
+server.start(router.route, handle);
+
+console.log("Crawl Web UI initialized");

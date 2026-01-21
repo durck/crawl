@@ -1,113 +1,504 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-  <link href="/bootstrap/dist/css/bootstrap.css" rel="stylesheet">
-  <link href="/jquery-ui/themes/base/jquery-ui.css" rel="stylesheet">
-  <style> .pointer { cursor: pointer; } .well { padding-bottom: 0; } .input-group {padding-bottom: 10px;} .nav-tabs > li > a {padding-top: 4px; padding-bottom: 4px;} </style>
-  <script src="/jquery/dist/jquery.min.js"></script>
-  <script src="/jquery-ui/jquery-ui.min.js"></script>
-  <script>
-  function offset(o)
-  {
-    var uri = location.protocol + '//' + location.host + location.pathname + '?'
-    location.search.split('?').pop().split('&').map( function(arg) {
-      uri += ( arg.split('=')[0] != 'o' ) ? arg+'&' : ''
-    } )
-    location = uri + 'o=' + o
-  }
-
-  function new_tab(uri)
-  {
-    window.open(uri, '_blank')
-  }
-
-  $(document).ready( function() {
-    $("#query").autocomplete( {
-      source: function(request, response) {
-        $.ajax( {
-          url: "auto",
-          data: {q: request.term},
-          success: function(data) { response(data) }
-        } )
-      },
-      minLength: 2
-    } ) 
-  } )
-  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= query %> - Images - Crawl Search</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+    .image-card {
+      background: white;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      transition: transform 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+    }
+    @media (prefers-color-scheme: dark) {
+      .image-card { background: #1e293b; }
+    }
+    .image-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+    .image-card.focused {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-light);
+    }
+    .image-wrapper {
+      position: relative;
+      width: 100%;
+      padding-top: 75%;
+      background: var(--light);
+      overflow: hidden;
+    }
+    .image-wrapper img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.3s;
+    }
+    .image-card:hover .image-wrapper img {
+      transform: scale(1.05);
+    }
+    .image-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 2rem 0.75rem 0.75rem;
+      background: linear-gradient(transparent, rgba(0,0,0,0.7));
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .image-card:hover .image-overlay {
+      opacity: 1;
+    }
+    .image-overlay-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .image-overlay-btn {
+      flex: 1;
+      padding: 0.375rem;
+      background: rgba(255,255,255,0.9);
+      border: none;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      color: var(--dark);
+    }
+    .image-overlay-btn:hover {
+      background: white;
+    }
+    .image-card-body {
+      padding: 0.75rem;
+    }
+    .image-card-title {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      margin: 0 0 0.375rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--dark);
+    }
+    .image-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--secondary);
+    }
+    .lightbox {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.95);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .lightbox.active {
+      display: flex;
+    }
+    .lightbox-close {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      width: 40px;
+      height: 40px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .lightbox-close:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    .lightbox-img {
+      max-width: 90vw;
+      max-height: 85vh;
+      object-fit: contain;
+      border-radius: var(--radius);
+    }
+    .lightbox-info {
+      position: absolute;
+      bottom: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      color: white;
+    }
+    .lightbox-title {
+      font-size: 1rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+    .lightbox-actions {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+    }
+    .lightbox-actions a {
+      color: rgba(255,255,255,0.8);
+      font-size: 0.875rem;
+    }
+    .lightbox-actions a:hover {
+      color: white;
+    }
+    .lightbox-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 48px;
+      height: 48px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .lightbox-nav:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    .lightbox-prev { left: 1rem; }
+    .lightbox-next { right: 1rem; }
+  </style>
 </head>
 <body>
 
-<div class="container-fluid">
-  <div class="well row row-eq-height">
-    <form name="form" method="GET">
-     <div class="col-md-10 col-md-offset-1">
-       <div class="input-group">
-        <input id="query" type="text" name="q" class="form-control" value="<%= query %>">
-        <input type="hidden" name="images" value=1>
-        <span class="input-group-btn">
-         <button class="btn btn-primary" type="button" onclick="document.form.submit()">искать</button>
-        </span>
-       </div>
-       <ul class="nav nav-tabs">
-        <li><a data-toggle="tab" href="#" onclick="document.form.images.value=0;document.form.submit()">Все</a></li>
-        <li class="active"><a data-toggle="tab" href="#" onclick="document.form.images.value=1;document.form.submit()">Картинки</a></li>
-       </ul>
-       <div class="tab-content">
-        <div id="text" class="tab-pane fade in active"></div>
-        <div id="images" class="tab-pane fade in active"></div>
+<header class="header">
+  <div class="container">
+    <div class="header-content">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/>
+          <path d="M21 21l-4.35-4.35"/>
+        </svg>
+        Crawl
+      </a>
+
+      <form id="searchForm" method="GET" style="flex:1;max-width:600px;">
+        <div class="search-form">
+          <div class="search-input-wrapper">
+            <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input
+              type="text"
+              id="query"
+              name="q"
+              class="search-input"
+              value="<%= query.replace(' filetype:image', '') %>"
+              autocomplete="off"
+            >
+          </div>
+          <button type="submit" class="search-btn">Search</button>
+        </div>
+        <input type="hidden" name="images" id="imagesMode" value="1">
+      </form>
+    </div>
+
+    <div class="tabs" style="max-width:600px;margin-left:auto;">
+      <button type="button" class="tab" onclick="searchMode('all')">All</button>
+      <button type="button" class="tab active" onclick="searchMode('images')">Images</button>
+    </div>
+  </div>
+</header>
+
+<main class="results-section">
+  <div class="container">
+
+    <div class="results-header">
+      <div class="results-count">
+        Found <strong><%= found.toLocaleString() %></strong> images
+        <span class="text-muted">(page <%= offset %>)</span>
       </div>
-     </div>
-    </form>
-  </div>
-</div>
-
-<div class="container-fluid">
-  <div class="row">
-    <div class="col-md-10 col-md-offset-1">
-      <p class="text-muted">Результатов: <%= pages.length + (offset-1)*40 %>/<%= found %></p>
     </div>
-  </div>
-</div>
 
-<div class="container-fluid">
- <div class="row">
-  <div class="container col-md-10 col-md-offset-1">
-   <% pages.forEach( function(page) { 
-    if (page.filetype == "image") { %>
-    <div class="col-lg-3">
-    <figure class="figure">
-      <img src="/images/<%=page.url.replace(/<\/?b>/g,'').replace(/\//g,'-')%>" class="figure-img img-thumbnail rounded" alt="<%=page.title%>">
-      <figcaption class="figure-caption"><a target="_blank" href="<%=page.href%>"><%- page.title %></a></figcaption>
-      <figcaption class="figure-caption"><span class="text-success pointer" onclick="new_tab('<%=page.cache%>')"><%- page.url %></span></figcaption>
-      <% if(page.server) { %><figcaption class="figure-caption"><span class="label label-info"><%= page.server %><% if(page.share) { %>/<%= page.share %><% } %></span></figcaption><% } %>
-      <figcaption class="figure-caption"><%- page.matches.slice(0,200) %></figcaption>
-    </figure>
+    <% if (pages.length === 0) { %>
+    <div class="empty-state">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+      <h3>No images found</h3>
+      <p>Try different keywords or search in all results</p>
     </div>
-   <% }
-   } ) %>
-  </div>
- </div>
-</div>
+    <% } else { %>
 
-<footer>
-<div class="container-fluid">
-<div class="row">
-<div class="col-md-10 col-md-offset-5">
-<div class="btn-toolbar" role="toolbar">
-  <button class="btn btn-default" type="button" onclick="offset(<%= offset-1 %>)">&laquo</button>
-  <div class="btn-group">
-    <% for(var i = (offset>2) ? offset-2 : offset; i < ((offset>2) ? offset+3 : offset+5); i++) { %>
-    <button class="btn <%= (i==offset) ? 'btn-info' : 'btn-default' %>" onclick="offset(this.innerHTML)" type="button"><%= i %></button>
+    <div class="image-grid">
+      <% pages.forEach(function(page, index) { %>
+      <% if (page.filetype === 'image') { %>
+      <div class="image-card fade-in"
+           style="animation-delay: <%= index * 20 %>ms"
+           data-index="<%= index %>"
+           data-href="<%= page.href %>"
+           data-cache="<%= page.cache %>"
+           data-title="<%= page.title.replace(/<\/?b>/g, '') %>"
+           onclick="openLightbox(<%= index %>)">
+        <div class="image-wrapper">
+          <img src="/images/<%= page.url.replace(/<\/?b>/g,'').replace(/\//g,'-') %>"
+               alt="<%= page.title.replace(/<\/?b>/g, '') %>"
+               loading="lazy"
+               onerror="this.src='/css/placeholder.svg'">
+          <div class="image-overlay">
+            <div class="image-overlay-actions">
+              <button class="image-overlay-btn" onclick="event.stopPropagation();window.open('<%= page.href %>', '_blank')">
+                Open
+              </button>
+              <button class="image-overlay-btn" onclick="event.stopPropagation();window.open('<%= page.cache %>', '_blank')">
+                Cache
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="image-card-body">
+          <h4 class="image-card-title" title="<%- page.title.replace(/<\/?b>/g, '') %>">
+            <%- page.title %>
+          </h4>
+          <div class="image-card-meta">
+            <% if (page.server) { %>
+            <span class="tag server" style="font-size:0.625rem;padding:0.125rem 0.375rem">
+              <%= page.server %><% if (page.share) { %>/<%= page.share %><% } %>
+            </span>
+            <% } %>
+            <% if (page.timestamp) { %>
+            <span><%= new Date(page.timestamp).toLocaleDateString('ru-RU') %></span>
+            <% } %>
+          </div>
+        </div>
+      </div>
+      <% } %>
+      <% }); %>
+    </div>
+
+    <nav class="pagination">
+      <button class="page-btn" onclick="goToPage(<%= offset - 1 %>)" <%= offset <= 1 ? 'disabled' : '' %>>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+
+      <%
+        const totalPages = Math.ceil(found / 40);
+        const startPage = Math.max(1, offset - 2);
+        const endPage = Math.min(totalPages, startPage + 4);
+      %>
+
+      <% if (startPage > 1) { %>
+        <button class="page-btn" onclick="goToPage(1)">1</button>
+        <% if (startPage > 2) { %><span class="text-muted">...</span><% } %>
+      <% } %>
+
+      <% for (let i = startPage; i <= endPage; i++) { %>
+        <button class="page-btn <%= i === offset ? 'active' : '' %>" onclick="goToPage(<%= i %>)"><%= i %></button>
+      <% } %>
+
+      <% if (endPage < totalPages) { %>
+        <% if (endPage < totalPages - 1) { %><span class="text-muted">...</span><% } %>
+        <button class="page-btn" onclick="goToPage(<%= totalPages %>)"><%= totalPages %></button>
+      <% } %>
+
+      <button class="page-btn" onclick="goToPage(<%= offset + 1 %>)" <%= offset >= totalPages ? 'disabled' : '' %>>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </button>
+    </nav>
     <% } %>
+
   </div>
-  <button class="btn btn-default" type="button" onclick="offset(<%= offset+1 %>)">&raquo</button>
+</main>
+
+<!-- Lightbox -->
+<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="18" y1="6" x2="6" y2="18"/>
+      <line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  </button>
+  <button class="lightbox-nav lightbox-prev" onclick="event.stopPropagation();navigateLightbox(-1)">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+  </button>
+  <img id="lightbox-img" class="lightbox-img" src="" alt="" onclick="event.stopPropagation()">
+  <button class="lightbox-nav lightbox-next" onclick="event.stopPropagation();navigateLightbox(1)">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
+  </button>
+  <div class="lightbox-info" onclick="event.stopPropagation()">
+    <div id="lightbox-title" class="lightbox-title"></div>
+    <div class="lightbox-actions">
+      <a id="lightbox-open" href="#" target="_blank">Open original</a>
+      <a id="lightbox-cache" href="#" target="_blank">View cache</a>
+    </div>
+  </div>
 </div>
-</div>
-</div>
-</div>
+
+<footer class="footer">
+  <div class="container">
+    Crawl v2.0 &mdash; <kbd class="kbd">/</kbd> Search &bull; <kbd class="kbd">←</kbd>/<kbd class="kbd">→</kbd> Navigate &bull; <kbd class="kbd">Esc</kbd> Close
+  </div>
 </footer>
+
+<script>
+// Navigation
+function goToPage(page) {
+  if (page < 1) return;
+  const url = new URL(window.location);
+  url.searchParams.set('o', page);
+  window.location = url;
+}
+
+function searchMode(mode) {
+  const url = new URL(window.location);
+  url.searchParams.set('images', mode === 'images' ? '1' : '0');
+  url.searchParams.delete('o');
+  window.location = url;
+}
+
+// Lightbox
+let currentIndex = 0;
+const cards = document.querySelectorAll('.image-card');
+
+function openLightbox(index) {
+  currentIndex = index;
+  const card = cards[index];
+  if (!card) return;
+
+  const img = card.querySelector('img');
+  const lightbox = document.getElementById('lightbox');
+  const lightboxImg = document.getElementById('lightbox-img');
+  const lightboxTitle = document.getElementById('lightbox-title');
+  const lightboxOpen = document.getElementById('lightbox-open');
+  const lightboxCache = document.getElementById('lightbox-cache');
+
+  lightboxImg.src = img.src;
+  lightboxTitle.textContent = card.dataset.title;
+  lightboxOpen.href = card.dataset.href;
+  lightboxCache.href = card.dataset.cache;
+
+  lightbox.classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+function navigateLightbox(direction) {
+  let newIndex = currentIndex + direction;
+  if (newIndex < 0) newIndex = cards.length - 1;
+  if (newIndex >= cards.length) newIndex = 0;
+  openLightbox(newIndex);
+}
+
+// Keyboard
+document.addEventListener('keydown', function(e) {
+  const lightbox = document.getElementById('lightbox');
+
+  if (lightbox.classList.contains('active')) {
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') navigateLightbox(-1);
+    if (e.key === 'ArrowRight') navigateLightbox(1);
+    return;
+  }
+
+  const input = document.getElementById('query');
+  if (e.key === '/' && document.activeElement !== input) {
+    e.preventDefault();
+    input.focus();
+    input.select();
+  }
+});
+
+// Autocomplete
+document.addEventListener('DOMContentLoaded', function() {
+  const input = document.getElementById('query');
+  let timeout = null;
+  let dropdown = null;
+
+  function createDropdown() {
+    if (dropdown) return dropdown;
+    dropdown = document.createElement('div');
+    dropdown.className = 'ui-autocomplete';
+    dropdown.style.cssText = 'position:absolute;width:100%;display:none;z-index:1000;';
+    input.parentNode.appendChild(dropdown);
+    return dropdown;
+  }
+
+  function showSuggestions(items) {
+    const dd = createDropdown();
+    if (!items.length) {
+      dd.style.display = 'none';
+      return;
+    }
+    dd.innerHTML = items.map(item => {
+      const div = document.createElement('div');
+      div.textContent = item;
+      return `<div class="ui-menu-item">${div.innerHTML}</div>`;
+    }).join('');
+    dd.style.display = 'block';
+
+    dd.querySelectorAll('.ui-menu-item').forEach(el => {
+      el.addEventListener('click', function() {
+        input.value = this.textContent;
+        dd.style.display = 'none';
+        document.getElementById('searchForm').submit();
+      });
+    });
+  }
+
+  input.addEventListener('input', function() {
+    clearTimeout(timeout);
+    const q = this.value.trim();
+    if (q.length < 2) {
+      if (dropdown) dropdown.style.display = 'none';
+      return;
+    }
+    timeout = setTimeout(() => {
+      fetch('auto?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(showSuggestions)
+        .catch(() => {});
+    }, 200);
+  });
+
+  document.addEventListener('click', function(e) {
+    if (dropdown && !input.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+});
+</script>
 
 </body>
 </html>

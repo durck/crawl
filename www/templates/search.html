@@ -1,113 +1,520 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-  <link href="/bootstrap/dist/css/bootstrap.css" rel="stylesheet">
-  <link href="/jquery-ui/themes/base/jquery-ui.css" rel="stylesheet">
-  <style> .pointer { cursor: pointer; } .well { padding-bottom: 0; } .input-group {padding-bottom: 10px;} .nav-tabs > li > a {padding-top: 4px; padding-bottom: 4px;} </style>
-  <script src="/jquery/dist/jquery.min.js"></script>
-  <script src="/jquery-ui/jquery-ui.min.js"></script>
-  <script>
-  function offset(o)
-  {
-    var uri = location.protocol + '//' + location.host + location.pathname + '?'
-    location.search.split('?').pop().split('&').map( function(arg) {
-      uri += ( arg.split('=')[0] != 'o' ) ? arg+'&' : ''
-    } )
-    location = uri + 'o=' + o
-  }
-
-  function new_tab(uri)
-  {
-    window.open(uri, '_blank')
-  }
-
-  $(document).ready( function() {
-    $("#query").autocomplete( {
-      source: function(request, response) {
-        $.ajax( {
-          url: "auto",
-          data: {q: request.term},
-          success: function(data) { response(data) }
-        } )
-      },
-      minLength: 2
-    } ) 
-  } )
-  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= query %> - Crawl Search</title>
+  <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
 
-<div class="container-fluid">
-  <div class="well row row-eq-height">
-    <form name="form" method="GET">
-     <div class="col-md-10 col-md-offset-1">
-       <div class="input-group">
-        <input id="query" type="text" name="q" class="form-control" value="<%= query %>">
-        <input type="hidden" name="images" value=0>
-        <span class="input-group-btn">
-         <button class="btn btn-primary" type="button" onclick="document.form.submit()">искать</button>
-        </span>
-       </div>
-       <ul class="nav nav-tabs">
-        <li class="active"><a data-toggle="tab" href="#" onclick="document.form.images.value=0;document.form.submit()">Все</a></li>
-        <li><a data-toggle="tab" href="#" onclick="document.form.images.value=1;document.form.submit()">Картинки</a></li>
-       </ul>
-       <div class="tab-content">
-        <div id="text" class="tab-pane fade in active"></div>
-        <div id="images" class="tab-pane fade in active"></div>
-      </div>
-     </div>
-    </form>
-  </div>
-</div>
+<header class="header">
+  <div class="container">
+    <div class="header-content">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/>
+          <path d="M21 21l-4.35-4.35"/>
+        </svg>
+        Crawl
+      </a>
 
-<div class="container-fluid">
-  <div class="row">
-    <div class="col-md-10 col-md-offset-1">
-      <p class="text-muted">Результатов: <%= pages.length + (offset-1)*10 %>/<%= found %></p>
-    </div>
-  </div>
-</div>
-
-<div class="container-fluid">
-  <% pages.forEach( function(page) { %>
-    <div class="row">
-      <div class="col-md-10 col-md-offset-1">
-        <div class="panel panel-default">
-          <div class="panel-body">
-            <h4 class="text-primary"><a target="_blank" href="<%=page.href%>"><%- page.title %></a>
-              <span class="text-muted">(<%= page.relevant %>)</span>
-            </h4>
-            <span class="text-success pointer" onclick="new_tab('<%=page.cache%>')"><%- page.url %></span>
-            <% if(page.server) { %><span class="label label-info"><%= page.server %><% if(page.share) { %>/<%= page.share %><% } %></span><% } %>
-            <span class="text-muted"><%= new Date(page.timestamp).toLocaleDateString() %></span>
-            <p><%- page.matches %></p>
+      <form id="searchForm" method="GET" style="flex:1;max-width:600px;">
+        <div class="search-form">
+          <div class="search-input-wrapper">
+            <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input
+              type="text"
+              id="query"
+              name="q"
+              class="search-input"
+              value="<%= query %>"
+              autocomplete="off"
+            >
           </div>
+          <button type="submit" class="search-btn">Search</button>
         </div>
+        <input type="hidden" name="images" id="imagesMode" value="0">
+      </form>
+    </div>
+
+    <div class="tabs" style="max-width:600px;margin-left:auto;">
+      <button type="button" class="tab active" onclick="searchMode('all')">All</button>
+      <button type="button" class="tab" onclick="searchMode('images')">Images</button>
+    </div>
+  </div>
+</header>
+
+<main class="results-section">
+  <div class="container container-narrow">
+
+    <div class="results-header">
+      <div class="results-count">
+        Found <strong><%= found.toLocaleString() %></strong> results
+        <span class="text-muted">(page <%= offset %>)</span>
+      </div>
+      <div class="results-actions">
+        <button type="button" class="export-btn" onclick="exportResults('csv')" title="Export to CSV">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          CSV
+        </button>
+        <button type="button" class="export-btn" onclick="exportResults('json')" title="Export to JSON">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          JSON
+        </button>
+        <button type="button" class="export-btn" onclick="toggleFilters()" title="Toggle filters">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+          </svg>
+          Filters
+        </button>
       </div>
     </div>
-  <% } ) %>
-</div>
 
-<footer>
-<div class="container-fluid">
-<div class="row">
-<div class="col-md-10 col-md-offset-5">
-<div class="btn-toolbar" role="toolbar">
-  <button class="btn btn-default" type="button" onclick="offset(<%= offset-1 %>)">&laquo</button>
-  <div class="btn-group">
-    <% for(var i = (offset>2) ? offset-2 : offset; i < ((offset>2) ? offset+3 : offset+5); i++) { %>
-    <button class="btn <%= (i==offset) ? 'btn-info' : 'btn-default' %>" onclick="offset(this.innerHTML)" type="button"><%= i %></button>
+    <!-- Filters Panel -->
+    <div class="filters-panel" id="filtersPanel" style="display:none;">
+      <div class="filter-group">
+        <label class="filter-label">File Type</label>
+        <select class="filter-select" id="filterFiletype">
+          <option value="">All types</option>
+          <option value="pdf">PDF</option>
+          <option value="doc">DOC/DOCX</option>
+          <option value="xls">XLS/XLSX</option>
+          <option value="ppt">PPT/PPTX</option>
+          <option value="txt">TXT</option>
+          <option value="image">Images</option>
+          <option value="archive">Archives</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Server</label>
+        <input type="text" class="filter-input" id="filterServer" placeholder="e.g. server01">
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Date From</label>
+        <input type="date" class="filter-input" id="filterDateFrom">
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Date To</label>
+        <input type="date" class="filter-input" id="filterDateTo">
+      </div>
+      <div class="filter-group" style="flex-direction:row;gap:0.5rem;align-self:flex-end;">
+        <button type="button" class="filter-btn" onclick="applyFilters()">Apply</button>
+        <button type="button" class="filter-btn secondary" onclick="clearFilters()">Clear</button>
+      </div>
+    </div>
+
+    <% if (pages.length === 0) { %>
+    <div class="empty-state">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="11" cy="11" r="8"/>
+        <path d="M21 21l-4.35-4.35"/>
+        <path d="M8 8l6 6M14 8l-6 6"/>
+      </svg>
+      <h3>No results found</h3>
+      <p>Try different keywords or check your spelling</p>
+    </div>
+    <% } else { %>
+
+    <div class="results-list">
+      <% pages.forEach(function(page, index) { %>
+      <article class="result-card fade-in" style="animation-delay: <%= index * 30 %>ms">
+        <h3 class="result-title">
+          <a href="<%= page.href %>" target="_blank" rel="noopener"><%- page.title %></a>
+          <span class="score-badge" title="Relevance score">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            <%= page.relevant.toFixed(1) %>
+          </span>
+        </h3>
+
+        <div class="result-url" onclick="window.open('<%= page.cache %>', '_blank')" title="View cached version">
+          <%- page.url %>
+        </div>
+
+        <div class="result-meta">
+          <% if (page.filetype) { %>
+          <span class="tag filetype"><%= page.filetype.toUpperCase() %></span>
+          <% } %>
+
+          <% if (page.server) { %>
+          <span class="tag server">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+            </svg>
+            <%= page.server %><% if (page.share) { %>/<%= page.share %><% } %>
+          </span>
+          <% } %>
+
+          <% if (page.timestamp) { %>
+          <span class="result-meta-item">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <%= new Date(page.timestamp).toLocaleDateString('ru-RU') %>
+          </span>
+          <% } %>
+        </div>
+
+        <% if (page.matches) { %>
+        <p class="result-snippet"><%- page.matches %></p>
+        <% } %>
+      </article>
+      <% }); %>
+    </div>
+
+    <nav class="pagination">
+      <button class="page-btn" onclick="goToPage(<%= offset - 1 %>)" <%= offset <= 1 ? 'disabled' : '' %>>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+
+      <%
+        const totalPages = Math.ceil(found / 10);
+        const startPage = Math.max(1, offset - 2);
+        const endPage = Math.min(totalPages, startPage + 4);
+      %>
+
+      <% if (startPage > 1) { %>
+        <button class="page-btn" onclick="goToPage(1)">1</button>
+        <% if (startPage > 2) { %><span class="text-muted">...</span><% } %>
+      <% } %>
+
+      <% for (let i = startPage; i <= endPage; i++) { %>
+        <button class="page-btn <%= i === offset ? 'active' : '' %>" onclick="goToPage(<%= i %>)"><%= i %></button>
+      <% } %>
+
+      <% if (endPage < totalPages) { %>
+        <% if (endPage < totalPages - 1) { %><span class="text-muted">...</span><% } %>
+        <button class="page-btn" onclick="goToPage(<%= totalPages %>)"><%= totalPages %></button>
+      <% } %>
+
+      <button class="page-btn" onclick="goToPage(<%= offset + 1 %>)" <%= offset >= totalPages ? 'disabled' : '' %>>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </button>
+    </nav>
     <% } %>
+
   </div>
-  <button class="btn btn-default" type="button" onclick="offset(<%= offset+1 %>)">&raquo</button>
-</div>
-</div>
-</div>
-</div>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    Crawl v2.0 &mdash; <kbd class="kbd">/</kbd> Focus search &bull; <kbd class="kbd">J</kbd>/<kbd class="kbd">K</kbd> Navigate results
+  </div>
 </footer>
+
+<script>
+// Navigation
+function goToPage(page) {
+  if (page < 1) return;
+  const url = new URL(window.location);
+  url.searchParams.set('o', page);
+  window.location = url;
+}
+
+function searchMode(mode) {
+  const url = new URL(window.location);
+  url.searchParams.set('images', mode === 'images' ? '1' : '0');
+  url.searchParams.delete('o');
+  window.location = url;
+}
+
+// Search History
+const HISTORY_KEY = 'crawl_search_history';
+const MAX_HISTORY = 20;
+
+function getSearchHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+  catch { return []; }
+}
+
+function addToHistory(query) {
+  if (!query || query.trim().length < 2) return;
+  const history = getSearchHistory();
+  const existing = history.findIndex(h => h.query === query);
+  if (existing >= 0) history.splice(existing, 1);
+  history.unshift({ query: query, timestamp: Date.now() });
+  if (history.length > MAX_HISTORY) history.pop();
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch {}
+}
+
+// Save current search to history
+addToHistory('<%= query.replace(/'/g, "\\'") %>');
+
+// Autocomplete
+document.addEventListener('DOMContentLoaded', function() {
+  const input = document.getElementById('query');
+  let timeout = null;
+  let dropdown = null;
+
+  function createDropdown() {
+    if (dropdown) return dropdown;
+    dropdown = document.createElement('div');
+    dropdown.className = 'ui-autocomplete';
+    dropdown.style.cssText = 'position:absolute;width:100%;display:none;z-index:1000;';
+    input.parentNode.appendChild(dropdown);
+    return dropdown;
+  }
+
+  function showSuggestions(items) {
+    const dd = createDropdown();
+    if (!items.length) {
+      dd.style.display = 'none';
+      return;
+    }
+    dd.innerHTML = items.map(item =>
+      `<div class="ui-menu-item">${escapeHtml(item)}</div>`
+    ).join('');
+    dd.style.display = 'block';
+
+    dd.querySelectorAll('.ui-menu-item').forEach(el => {
+      el.addEventListener('click', function() {
+        input.value = this.textContent;
+        dd.style.display = 'none';
+        document.getElementById('searchForm').submit();
+      });
+    });
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  input.addEventListener('input', function() {
+    clearTimeout(timeout);
+    const q = this.value.trim();
+    if (q.length < 2) {
+      if (dropdown) dropdown.style.display = 'none';
+      return;
+    }
+    timeout = setTimeout(() => {
+      fetch('auto?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(showSuggestions)
+        .catch(() => {});
+    }, 200);
+  });
+
+  document.addEventListener('click', function(e) {
+    if (dropdown && !input.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+});
+
+// Export functions
+function exportResults(format) {
+  const url = new URL(window.location);
+  url.searchParams.set('json', '');
+
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      let content, filename, type;
+
+      if (format === 'csv') {
+        const headers = ['Title', 'URL', 'Filetype', 'Server', 'Share', 'Timestamp', 'Score'];
+        const rows = data.map(p => [
+          stripHtml(p.title),
+          p.href,
+          p.filetype || '',
+          p.server || '',
+          p.share || '',
+          p.timestamp || '',
+          p.relevant
+        ].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(','));
+
+        content = [headers.join(','), ...rows].join('\n');
+        filename = 'crawl-export.csv';
+        type = 'text/csv;charset=utf-8;';
+      } else {
+        content = JSON.stringify(data, null, 2);
+        filename = 'crawl-export.json';
+        type = 'application/json;charset=utf-8;';
+      }
+
+      downloadFile(content, filename, type);
+    })
+    .catch(err => {
+      console.error('Export failed:', err);
+      alert('Export failed. Please try again.');
+    });
+}
+
+function stripHtml(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return doc.body.textContent || '';
+}
+
+function downloadFile(content, filename, type) {
+  const blob = new Blob([content], { type: type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Filters
+function toggleFilters() {
+  const panel = document.getElementById('filtersPanel');
+  panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+}
+
+function applyFilters() {
+  const url = new URL(window.location);
+  let q = document.getElementById('query').value;
+
+  const filetype = document.getElementById('filterFiletype').value;
+  const server = document.getElementById('filterServer').value;
+  const dateFrom = document.getElementById('filterDateFrom').value;
+  const dateTo = document.getElementById('filterDateTo').value;
+
+  // Remove old filter operators
+  q = q.replace(/\s*filetype:\S+/g, '')
+       .replace(/\s*server:\S+/g, '')
+       .replace(/\s*after:\S+/g, '')
+       .replace(/\s*before:\S+/g, '')
+       .trim();
+
+  // Add new filters
+  if (filetype) {
+    if (filetype === 'doc') q += ' filetype:doc OR filetype:docx';
+    else if (filetype === 'xls') q += ' filetype:xls OR filetype:xlsx';
+    else if (filetype === 'ppt') q += ' filetype:ppt OR filetype:pptx';
+    else if (filetype === 'image') q += ' filetype:image';
+    else if (filetype === 'archive') q += ' filetype:zip OR filetype:rar OR filetype:7z';
+    else q += ' filetype:' + filetype;
+  }
+  if (server) q += ' server:' + server;
+  if (dateFrom) q += ' after:' + dateFrom;
+  if (dateTo) q += ' before:' + dateTo;
+
+  url.searchParams.set('q', q.trim());
+  url.searchParams.delete('o');
+  window.location = url;
+}
+
+function clearFilters() {
+  const url = new URL(window.location);
+  let q = document.getElementById('query').value;
+
+  q = q.replace(/\s*filetype:\S+/g, '')
+       .replace(/\s*server:\S+/g, '')
+       .replace(/\s*after:\S+/g, '')
+       .replace(/\s*before:\S+/g, '')
+       .replace(/\s*OR\s+filetype:\S+/g, '')
+       .trim();
+
+  document.getElementById('filterFiletype').value = '';
+  document.getElementById('filterServer').value = '';
+  document.getElementById('filterDateFrom').value = '';
+  document.getElementById('filterDateTo').value = '';
+
+  url.searchParams.set('q', q);
+  url.searchParams.delete('o');
+  window.location = url;
+}
+
+// Initialize filters from query
+document.addEventListener('DOMContentLoaded', function() {
+  const q = '<%= query %>';
+  const filetypeMatch = q.match(/filetype:(\S+)/);
+  const serverMatch = q.match(/server:(\S+)/);
+  const afterMatch = q.match(/after:(\S+)/);
+  const beforeMatch = q.match(/before:(\S+)/);
+
+  if (filetypeMatch) {
+    const ft = filetypeMatch[1].toLowerCase();
+    const select = document.getElementById('filterFiletype');
+    if (ft === 'doc' || ft === 'docx') select.value = 'doc';
+    else if (ft === 'xls' || ft === 'xlsx') select.value = 'xls';
+    else if (ft === 'ppt' || ft === 'pptx') select.value = 'ppt';
+    else if (select.querySelector(`option[value="${ft}"]`)) select.value = ft;
+  }
+  if (serverMatch) document.getElementById('filterServer').value = serverMatch[1];
+  if (afterMatch) document.getElementById('filterDateFrom').value = afterMatch[1];
+  if (beforeMatch) document.getElementById('filterDateTo').value = beforeMatch[1];
+
+  // Auto-show filters if any are active
+  if (filetypeMatch || serverMatch || afterMatch || beforeMatch) {
+    document.getElementById('filtersPanel').style.display = 'flex';
+  }
+});
+
+// Keyboard navigation
+document.addEventListener('keydown', function(e) {
+  const input = document.getElementById('query');
+
+  if (e.key === '/' && document.activeElement !== input) {
+    e.preventDefault();
+    input.focus();
+    input.select();
+  }
+
+  if (document.activeElement === input) return;
+
+  const cards = document.querySelectorAll('.result-card');
+  const current = document.querySelector('.result-card.focused');
+  let index = current ? Array.from(cards).indexOf(current) : -1;
+
+  if (e.key === 'j' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (current) current.classList.remove('focused');
+    index = Math.min(index + 1, cards.length - 1);
+    cards[index]?.classList.add('focused');
+    cards[index]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  if (e.key === 'k' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (current) current.classList.remove('focused');
+    index = Math.max(index - 1, 0);
+    cards[index]?.classList.add('focused');
+    cards[index]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  if (e.key === 'Enter' && current) {
+    const link = current.querySelector('.result-title a');
+    if (link) window.open(link.href, '_blank');
+  }
+
+  if (e.key === 'c' && current) {
+    const url = current.querySelector('.result-url');
+    if (url) url.click();
+  }
+});
+</script>
+
+<style>
+.result-card.focused {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+</style>
 
 </body>
 </html>

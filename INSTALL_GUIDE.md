@@ -13,8 +13,10 @@
 ## Оглавление
 
 - [Быстрая установка](#быстрая-установка)
+- [Docker установка](#docker-установка)
 - [Ручная установка на Kali Linux](#ручная-установка-на-kali-linux)
 - [Проблемы при установке и их решения](#проблемы-при-установке-и-их-решения)
+- [Конфигурация](#конфигурация)
 - [Запуск компонентов](#запуск-компонентов)
 - [Использование (Workflow)](#использование-workflow)
 - [Многопоточный краулинг](#многопоточный-краулинг)
@@ -22,6 +24,7 @@
 - [CLI-утилиты](#cli-утилиты)
 - [Полезные опции crawl.sh](#полезные-опции-crawlsh)
 - [Переменные окружения](#переменные-окружения)
+- [Production-развёртывание (nginx)](#production-развёртывание-nginx)
 - [Поддерживаемые форматы](#поддерживаемые-форматы)
 - [Быстрый старт (cheatsheet)](#быстрый-старт-cheatsheet)
 
@@ -52,6 +55,156 @@ sudo ./install.sh
 - Патчит конфигурации для работы без SSL
 - Настраивает права доступа
 - Исправляет line endings
+
+---
+
+## Docker установка
+
+Docker — рекомендуемый способ для production-развёртывания Web GUI и OpenSearch. Все компоненты настроены и работают из коробки.
+
+### Когда использовать Docker
+
+| Сценарий | Рекомендация |
+|----------|-------------|
+| Быстрый старт Web GUI + OpenSearch | ✅ Docker Compose |
+| Production-развёртывание с SSL | ✅ Docker + nginx |
+| Командный доступ к поиску | ✅ Docker |
+| Одноразовый краулинг на Kali | ❌ Ручная установка |
+| Краулинг с SMB/NFS монтированием | ⚠️ Docker с volumes или ручная установка |
+
+### Быстрый старт с Docker Compose
+
+```bash
+# Клонировать репозиторий
+git clone https://github.com/s0i37/crawl.git
+cd crawl
+
+# Запустить OpenSearch + Web GUI
+docker compose up -d
+
+# Проверить статус
+docker compose ps
+
+# Посмотреть логи
+docker compose logs -f
+```
+
+После запуска:
+- **Web GUI**: http://localhost:8080/
+- **OpenSearch API**: https://localhost:9200/
+
+### Сервисы Docker Compose
+
+| Сервис | Описание | Порт |
+|--------|----------|------|
+| `opensearch` | Полнотекстовый поиск | 9200 |
+| `web` | Web-интерфейс | 8080 |
+| `dashboards` | OpenSearch Dashboards (опционально) | 5601 |
+| `worker` | Контейнер для краулинга (опционально) | - |
+
+### Профили (опциональные сервисы)
+
+```bash
+# Только OpenSearch + Web GUI (по умолчанию)
+docker compose up -d
+
+# С OpenSearch Dashboards (визуализация)
+docker compose --profile dashboards up -d
+
+# С Worker для краулинга внутри контейнера
+docker compose --profile worker up -d
+
+# Все сервисы
+docker compose --profile dashboards --profile worker up -d
+```
+
+### Переменные окружения
+
+Создайте файл `.env` для настройки:
+
+```bash
+# .env
+OPENSEARCH_PASS=MySecurePassword123!
+CRAWL_THREADS=8
+OCR_DISABLED=0
+OCR_LANGS=eng rus
+```
+
+| Переменная | Описание | Default |
+|------------|----------|---------|
+| `OPENSEARCH_PASS` | Пароль OpenSearch admin | `Crawl@2024!` |
+| `CRAWL_THREADS` | Потоков для worker | `4` |
+| `OCR_DISABLED` | Отключить OCR | `0` |
+| `OCR_LANGS` | Языки OCR | `eng rus` |
+
+### Работа с данными
+
+```bash
+# Создать индекс
+docker compose exec web ./opensearch.py opensearch:9200 -i pentest -init
+
+# Импорт CSV (положить в ./output/)
+cp data.csv ./output/
+docker compose exec web ./opensearch.py opensearch:9200 -i pentest -import /opt/crawl/output/data.csv
+
+# Открыть в браузере
+firefox http://localhost:8080/pentest/
+```
+
+### Краулинг с Docker (worker)
+
+```bash
+# Запустить worker
+docker compose --profile worker up -d
+
+# Подключиться к worker
+docker compose exec worker bash
+
+# Внутри контейнера — краулинг
+./crawl_mt.sh /data/target 8 -size -10M
+
+# Данные в ./data/ доступны как /data внутри контейнера
+# Результаты в ./output/ доступны как /opt/crawl/output
+```
+
+Для краулинга SMB/NFS шар — монтируйте их в `./data/`:
+
+```bash
+# На хосте
+mkdir -p data/smb
+sudo mount.cifs //server/share data/smb -o ro,user=admin,pass=pass
+
+# В worker
+docker compose exec worker ./crawl_mt.sh /data/smb 8 -size -10M
+```
+
+### Остановка и очистка
+
+```bash
+# Остановить
+docker compose down
+
+# Остановить и удалить данные (ОСТОРОЖНО!)
+docker compose down -v
+```
+
+### Standalone Docker (без Compose)
+
+Если нужен только один контейнер:
+
+```bash
+# Собрать образ
+docker build -t crawl .
+
+# Запустить для краулинга
+docker run -it --rm \
+    -v $(pwd)/data:/data \
+    -v $(pwd)/output:/opt/crawl/output \
+    crawl bash
+
+# Внутри
+./crawl_mt.sh /data/target 4 -size -10M
+```
 
 ---
 
@@ -242,6 +395,79 @@ echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf
 # Редактировать /opt/opensearch-2.11.0/config/jvm.options:
 # -Xms512m
 # -Xmx512m
+```
+
+---
+
+## Конфигурация
+
+### Файлы конфигурации
+
+Crawl поддерживает централизованную конфигурацию через файлы:
+
+| Файл | Назначение |
+|------|------------|
+| `~/.crawl.conf` | Основные настройки (OCR, потоки, таймауты) |
+| `~/.crawl-credentials.conf` | Учётные данные (SMB, LDAP, IMAP) |
+| `config/crawl.conf` | Пример конфигурации в репозитории |
+| `config/credentials.conf.example` | Пример файла учётных данных |
+
+### Создание конфигурации
+
+```bash
+# Скопировать примеры
+cp config/crawl.conf ~/.crawl.conf
+cp config/credentials.conf.example ~/.crawl-credentials.conf
+
+# Защитить учётные данные
+chmod 600 ~/.crawl-credentials.conf
+```
+
+### Основные параметры (~/.crawl.conf)
+
+```bash
+# Потоки и производительность
+DEFAULT_THREADS=4           # Потоков для crawl_mt.sh
+COMMAND_TIMEOUT=60          # Таймаут команд (сек)
+MAX_FILESIZE=100M           # Макс. размер файла
+
+# OCR
+OCR_LANGS="eng rus"         # Языки Tesseract
+OCR_MIN_TEXT=100            # Мин. символов до OCR
+OCR_MAX_IMAGES=10           # Макс. картинок на документ
+OCR_DISABLED=0              # 1 = отключить OCR
+
+# Исключения
+EXCLUDE_DIRS="Windows,Program Files,node_modules,__pycache__"
+
+# OpenSearch
+OPENSEARCH_BATCH_SIZE=500   # Размер batch при импорте
+```
+
+### Учётные данные (~/.crawl-credentials.conf)
+
+```bash
+# SMB/CIFS
+SMB_DOMAIN="CORP"
+SMB_USER="crawler"
+SMB_PASS="secret"
+
+# LDAP (для обнаружения целей)
+LDAP_BIND_DN="cn=crawler,ou=service,dc=corp,dc=local"
+LDAP_BIND_PASS="ldap_secret"
+LDAP_BASE_DN="dc=corp,dc=local"
+
+# OpenSearch
+OPENSEARCH_USER="admin"
+OPENSEARCH_PASS="admin_secret"
+```
+
+### Переменная окружения
+
+Для указания другого пути к конфигу:
+
+```bash
+CRAWL_CONFIG=/path/to/custom.conf ./crawl_mt.sh folder/ 4
 ```
 
 ---
@@ -480,11 +706,13 @@ SQLite с FTS5 обеспечивает быстрый полнотекстов�
 **Опции search.sh:**
 | Опция | Описание |
 |-------|----------|
-| `-u` | Фильтр по URL-префиксу |
-| `-t` | Фильтр по типу файла |
-| `-e` | Фильтр по расширению |
-| `-c` | Лимит результатов (default: 10) |
-| `-o` | Смещение (пагинация) |
+| `-u PREFIX` | Фильтр по URL-префиксу |
+| `-t TYPE` | Фильтр по типу файла (pdf, word, excel...) |
+| `-e EXT` | Фильтр по расширению (pdf, docx, xlsx...) |
+| `-s SERVER` | Фильтр по имени сервера |
+| `-c COUNT` | Лимит результатов (default: 10) |
+| `-o OFFSET` | Смещение (пагинация) |
+| `-j` | Вывод в JSON формате |
 
 **FTS5 синтаксис запросов:**
 | Синтаксис | Описание |
@@ -605,6 +833,86 @@ IMAGES=/opt/crawl/www/static/images ./crawl_mt.sh folder/ 4
 
 ---
 
+## Production-развёртывание (nginx)
+
+Для production-окружения рекомендуется использовать nginx как reverse proxy перед Web GUI.
+
+### Зачем nginx
+
+- **Rate limiting** — защита от перегрузки поиска
+- **Кэширование** — ускорение повторных запросов
+- **SSL/TLS** — шифрование трафика
+- **Security headers** — защита от XSS, clickjacking
+- **Сжатие** — gzip для экономии трафика
+
+### Установка
+
+```bash
+# Скопировать конфигурации
+sudo cp nginx.conf /etc/nginx/sites-available/crawl
+sudo cp nginx-crawl-common.conf /etc/nginx/snippets/crawl-common.conf
+
+# Создать директорию для кэша
+sudo mkdir -p /var/cache/nginx/crawl
+sudo chown www-data:www-data /var/cache/nginx/crawl
+
+# Включить сайт
+sudo ln -s /etc/nginx/sites-available/crawl /etc/nginx/sites-enabled/
+
+# Проверить конфигурацию
+sudo nginx -t
+
+# Перезапустить nginx
+sudo systemctl reload nginx
+```
+
+### Схема работы
+
+```
+Клиент → nginx:80/443 → Node.js:8080 → OpenSearch:9200
+             ↓
+       Rate limiting
+       Кэширование
+       SSL termination
+       Security headers
+```
+
+### Rate limits
+
+| Endpoint | Лимит | Описание |
+|----------|-------|----------|
+| `/*/search` | 10 req/s | Поисковые запросы |
+| `/*/auto` | 30 req/s | Автодополнение |
+| `/*/cache` | 30 req/s | Превью документов |
+
+### SSL (production)
+
+Раскомментируйте HTTPS-блок в `nginx.conf` и укажите сертификаты:
+
+```nginx
+ssl_certificate /etc/ssl/certs/crawl.crt;
+ssl_certificate_key /etc/ssl/private/crawl.key;
+```
+
+Для Let's Encrypt:
+```bash
+sudo certbot --nginx -d crawl.example.com
+```
+
+### Docker + nginx
+
+При использовании Docker Compose, nginx может работать на хосте:
+
+```bash
+# docker-compose.yml — изменить порты web на 127.0.0.1
+ports:
+  - "127.0.0.1:8080:8080"
+
+# nginx будет проксировать на localhost:8080
+```
+
+---
+
 ## Поддерживаемые форматы
 
 | Категория | Форматы | Инструмент |
@@ -624,18 +932,25 @@ IMAGES=/opt/crawl/www/static/images ./crawl_mt.sh folder/ 4
 ## Быстрый старт (cheatsheet)
 
 ```bash
-# === УСТАНОВКА ===
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║                         УСТАНОВКА                                 ║
+# ╚══════════════════════════════════════════════════════════════════╝
 
+# --- Вариант 1: Docker (рекомендуется для Web GUI) ---
+git clone https://github.com/s0i37/crawl.git && cd crawl
+docker compose up -d
+# Готово! http://localhost:8080/
+
+# --- Вариант 2: Ручная установка (Kali/Debian) ---
 cd /opt
 sudo git clone https://github.com/s0i37/crawl.git
 cd crawl
 sudo ./install.sh
 
 
-# === МИНИМАЛЬНЫЙ WORKFLOW ===
-
-# 1. Краулинг папки (однопоточный)
-./crawl.sh target_folder/ -size -10M
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║                     МИНИМАЛЬНЫЙ WORKFLOW                          ║
+# ╚══════════════════════════════════════════════════════════════════╝
 
 # 1. Краулинг папки (многопоточный, рекомендуется)
 ./crawl_mt.sh target_folder/ 8 -size -10M
@@ -647,7 +962,9 @@ grep -i "password\|secret\|token\|api.key" *.csv
 grep -ia -o -P ".{0,50}password.{0,50}" *.csv
 
 
-# === РАСШИРЕННЫЙ WORKFLOW ===
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║                    РАСШИРЕННЫЙ WORKFLOW                           ║
+# ╚══════════════════════════════════════════════════════════════════╝
 
 # 1. Импорт в SQLite (FTS5)
 ./import.sh *.csv
@@ -655,7 +972,8 @@ grep -ia -o -P ".{0,50}password.{0,50}" *.csv
 # 2. Поиск по базе
 ./search.sh index.db 'password'
 ./search.sh -t pdf index.db 'confidential'
-./search.sh index.db 'admin OR root'
+./search.sh -s fileserver index.db 'admin'
+./search.sh -j index.db 'secret'              # JSON вывод
 
 # 3. Статистика
 ./stat.sh index.db
@@ -664,7 +982,9 @@ grep -ia -o -P ".{0,50}password.{0,50}" *.csv
 ./cache.sh 'documents/report' index.db
 
 
-# === WEB GUI ===
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║                  WEB GUI (ручная установка)                       ║
+# ╚══════════════════════════════════════════════════════════════════╝
 
 # 1. Запустить OpenSearch (отдельный терминал)
 /opt/opensearch-2.11.0/bin/opensearch
@@ -678,6 +998,45 @@ cd /opt/crawl/www && node index.js
 
 # 4. Открыть браузер
 # http://localhost:8080/test/
+
+
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║                       WEB GUI (Docker)                            ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+# 1. Запустить
+docker compose up -d
+
+# 2. Создать индекс
+docker compose exec web ./opensearch.py opensearch:9200 -i pentest -init
+
+# 3. Импорт данных (положить CSV в ./output/)
+cp data.csv ./output/
+docker compose exec web ./opensearch.py opensearch:9200 -i pentest \
+    -import /opt/crawl/output/data.csv
+
+# 4. Открыть браузер
+# http://localhost:8080/pentest/
+
+# 5. Остановить
+docker compose down
+
+
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║                    КРАУЛИНГ С DOCKER                              ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+# Запустить worker-контейнер
+docker compose --profile worker up -d
+
+# Монтировать SMB на хосте
+mkdir -p data/smb
+sudo mount.cifs //server/share data/smb -o ro,user=admin,pass=pass
+
+# Краулинг внутри контейнера
+docker compose exec worker ./crawl_mt.sh /data/smb 8 -size -10M
+
+# Результат в ./output/
 ```
 
 ---
@@ -709,6 +1068,46 @@ grep -i "backup\|dump\|export\|\.sql\|\.bak" *.csv
 
 ---
 
+## Архитектура проекта
+
+```
+crawl/
+├── crawl.sh              # Однопоточный краулер
+├── crawl_mt.sh           # Многопоточный краулер (рекомендуется)
+├── spider.sh             # Скачивание сайтов/FTP
+├── imap.sh               # Краулинг почтовых ящиков
+├── import.sh             # Импорт CSV в SQLite FTS5
+├── search.sh             # CLI поиск по SQLite
+├── opensearch.py         # Работа с OpenSearch
+├── stat.sh               # Статистика по базе
+├── cache.sh              # Просмотр кэша документов
+│
+├── lib/                  # Общие библиотеки
+│   ├── common.sh         # Функции, логирование, конфиги
+│   └── extractors/       # Модули извлечения текста
+│       ├── text.sh       # Текстовые форматы
+│       └── media.sh      # Медиа (изображения, аудио, видео)
+│
+├── config/               # Примеры конфигурации
+│   ├── crawl.conf        # Основные настройки
+│   └── credentials.conf.example  # Учётные данные
+│
+├── www/                  # Web GUI
+│   ├── index.js          # Точка входа
+│   ├── server.js         # HTTP-сервер
+│   ├── requestHandlers.js # Обработчики запросов
+│   └── templates/        # HTML-шаблоны
+│
+├── cron/                 # Скрипты для автоматизации
+│
+├── docker-compose.yml    # Docker Compose конфигурация
+├── Dockerfile            # Docker-образ
+├── nginx.conf            # Nginx reverse proxy
+└── nginx-crawl-common.conf # Общие настройки nginx
+```
+
+---
+
 ## Ссылки
 
 - **Репозиторий:** https://github.com/s0i37/crawl
@@ -717,4 +1116,4 @@ grep -i "backup\|dump\|export\|\.sql\|\.bak" *.csv
 
 ---
 
-*Документ обновлён: январь 2026*
+*Документ обновлён: январь 2025*
